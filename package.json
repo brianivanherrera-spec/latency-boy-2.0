@@ -1,0 +1,16 @@
+{
+  "name": "btc-paper-trader",
+  "version": "2.0.0",
+  "description": "BTC Paper Trading Bot with WebSocket",
+  "main": "src/index-websocket-v2.js",
+  "scripts": {
+    "start": "node src/index-websocket-v2.js"
+  },
+  "dependencies": {
+    "ws": "^8.14.2",
+    "node-fetch": "^2.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
