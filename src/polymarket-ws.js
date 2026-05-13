@@ -189,11 +189,28 @@ class PolymarketWebSocketClient {
         
         this.ws.send(JSON.stringify(subscribeMsg));
         logger.info(`✓ Suscrito a token: ${tokenId}`);
+        
+        // Timeout: si no recibimos datos en 10 segundos, usar HTTP polling
+        this.wsDataTimeout = setTimeout(() => {
+          if (this.currentPrices.timestamp === null || !this.currentPrices.yes) {
+            logger.warn('⚠️  WebSocket no envía datos - fallback a HTTP polling');
+            if (this.ws) {
+              this.ws.close();
+            }
+            this._startHttpPolling(tokenId);
+          }
+        }, 10000);
       });
       
       this.ws.on('message', (data) => {
         try {
           const message = JSON.parse(data.toString());
+          
+          // Cancelar timeout si recibimos cualquier mensaje
+          if (this.wsDataTimeout) {
+            clearTimeout(this.wsDataTimeout);
+            this.wsDataTimeout = null;
+          }
           
           // Debug: log todos los mensajes recibidos
           logger.debug(`[WS-RAW] ${JSON.stringify(message).substring(0, 200)}`);
@@ -213,6 +230,18 @@ class PolymarketWebSocketClient {
         logger.warn('⚠️  WebSocket desconectado');
         this.wsConnected = false;
         
+        // Cancelar timeout si existe
+        if (this.wsDataTimeout) {
+          clearTimeout(this.wsDataTimeout);
+          this.wsDataTimeout = null;
+        }
+        
+        // Si ya estamos usando HTTP polling, no reconectar
+        if (this.pollingInterval) {
+          logger.info('Ya usando HTTP polling - no reconectar WebSocket');
+          return;
+        }
+        
         // Intentar reconexión
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
@@ -224,7 +253,7 @@ class PolymarketWebSocketClient {
           }, delay);
         } else {
           logger.error('❌ Max intentos de reconexión alcanzados, usando fallback polling');
-          this._startFallbackPolling(tokenId);
+          this._startHttpPolling(tokenId);
         }
       });
       
