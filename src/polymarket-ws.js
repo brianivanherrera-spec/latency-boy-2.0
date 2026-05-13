@@ -190,10 +190,15 @@ class PolymarketWebSocketClient {
         this.ws.send(JSON.stringify(subscribeMsg));
         logger.info(`✓ Suscrito a token: ${tokenId}`);
         
-        // Timeout: si no recibimos datos en 10 segundos, usar HTTP polling
+        // Marcar que esperamos datos del WebSocket
+        this.wsExpectingData = true;
+        this.wsReceivedValidData = false;
+        
+        // Timeout: si no recibimos datos válidos en 10 segundos, usar HTTP polling
         this.wsDataTimeout = setTimeout(() => {
-          if (this.currentPrices.timestamp === null || !this.currentPrices.yes) {
-            logger.warn('⚠️  WebSocket no envía datos - fallback a HTTP polling');
+          if (!this.wsReceivedValidData) {
+            logger.warn('⚠️  WebSocket no envía datos válidos - fallback a HTTP polling');
+            this.wsExpectingData = false;
             if (this.ws) {
               this.ws.close();
             }
@@ -339,6 +344,9 @@ class PolymarketWebSocketClient {
       bestBid: bestBid,
       bestAsk: bestAsk,
     };
+    
+    // Marcar que recibimos datos válidos
+    this.wsReceivedValidData = true;
     
     // Callback para notificar update
     if (this.priceUpdateCallback) {
