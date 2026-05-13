@@ -20,6 +20,9 @@ module.exports = {
   POLY_API_KEY: process.env.POLY_API_KEY || '',
   POLY_API_SECRET: process.env.POLY_API_SECRET || '',
   POLY_PASSPHRASE: process.env.POLY_PASSPHRASE || '',
+  
+  // Soporte para nuevo formato Relayer API
+  RELAYER_API_KEY: process.env.RELAYER_API_KEY || '',
 
   // =============================================
   // PARÁMETROS DE SEÑAL MATEMÁTICA

@@ -74,24 +74,52 @@ class PolymarketWebSocketClient {
       return;
     }
 
-    if (!config.POLY_PRIVATE_KEY) {
+    // Soportar tanto el formato antiguo como el nuevo Relayer API
+    const privateKey = config.POLY_PRIVATE_KEY;
+    const apiKey = config.POLY_API_KEY || config.RELAYER_API_KEY;
+    const apiSecret = config.POLY_API_SECRET;
+    const passphrase = config.POLY_PASSPHRASE;
+
+    if (!privateKey) {
       throw new Error('POLY_PRIVATE_KEY no configurada');
     }
 
+    if (!apiKey) {
+      throw new Error('POLY_API_KEY o RELAYER_API_KEY no configurada');
+    }
+
     try {
-      this.wallet = new ethers.Wallet(config.POLY_PRIVATE_KEY);
-      this.clobClient = new ClobClient(
-        CLOB_API_BASE,
-        137, // Polygon mainnet
-        this.wallet,
-        {
-          key: config.POLY_API_KEY,
-          secret: config.POLY_API_SECRET,
-          passphrase: config.POLY_PASSPHRASE,
-        }
-      );
+      this.wallet = new ethers.Wallet(privateKey);
       
-      await this.clobClient.deriveApiKey();
+      // Si solo tenemos API Key (Relayer API nuevo), usamos ese formato
+      if (apiKey && !apiSecret && !passphrase) {
+        logger.info('✓ Usando Relayer API (formato nuevo)');
+        this.clobClient = new ClobClient(
+          CLOB_API_BASE,
+          137, // Polygon mainnet
+          this.wallet,
+          apiKey // Solo API key en formato nuevo
+        );
+      } else {
+        // Formato antiguo con API Key + Secret + Passphrase
+        logger.info('✓ Usando CLOB API (formato antiguo)');
+        this.clobClient = new ClobClient(
+          CLOB_API_BASE,
+          137, // Polygon mainnet
+          this.wallet,
+          {
+            key: apiKey,
+            secret: apiSecret,
+            passphrase: passphrase,
+          }
+        );
+      }
+      
+      // Solo derivar API key si es formato antiguo
+      if (apiSecret && passphrase) {
+        await this.clobClient.deriveApiKey();
+      }
+      
       this._initialized = true;
       logger.info(`✓ Wallet conectada: ${this.wallet.address}`);
     } catch (err) {
