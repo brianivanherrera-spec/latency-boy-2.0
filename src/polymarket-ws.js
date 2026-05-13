@@ -61,8 +61,9 @@ class PolymarketWebSocketClient {
   async init() {
     if (this._initialized) return;
 
+    // En DRY_RUN, usar API pública HTTP para precios (no requiere credenciales)
     if (config.DRY_RUN) {
-      logger.info('✓ DRY RUN: Polymarket en modo simulación (sin WebSocket real)');
+      logger.info('✓ DRY RUN: Usando API pública para precios (solo lectura)');
       this._initialized = true;
       return;
     }
@@ -102,13 +103,15 @@ class PolymarketWebSocketClient {
    * Suscribirse a updates en tiempo real del orderbook
    */
   async subscribeToMarket(tokenId) {
-    if (config.DRY_RUN) {
-      logger.info(`[DRY RUN] Simulando suscripción a token ${tokenId}`);
-      return;
-    }
-
     try {
       await this.init();
+      
+      // En DRY_RUN, usar polling HTTP público (no requiere autenticación)
+      if (config.DRY_RUN) {
+        logger.info(`[DRY RUN] Usando HTTP polling público para token ${tokenId}`);
+        this._startHttpPolling(tokenId);
+        return;
+      }
       
       // Obtener orderbook inicial vía REST
       const book = await this.clobClient.getOrderBook(tokenId);
@@ -122,7 +125,7 @@ class PolymarketWebSocketClient {
     } catch (err) {
       logger.error(`Error suscribiendo a mercado: ${err.message}`);
       // Fallback a polling si falla
-      this._startFallbackPolling(tokenId);
+      this._startHttpPolling(tokenId);
     }
   }
 
@@ -131,11 +134,10 @@ class PolymarketWebSocketClient {
    * Latencia <100ms vs 1-5 segundos del polling
    */
   _connectWebSocket(tokenId) {
+    // En DRY_RUN conectamos al WebSocket para obtener precios reales
+    // pero no ejecutaremos órdenes
     if (config.DRY_RUN) {
-      logger.info('[DRY RUN] WebSocket simulado (sin conexión real)');
-      // En dry run, usar polling ligero cada 2s
-      this._startFallbackPolling(tokenId);
-      return;
+      logger.info('[DRY RUN] Conectando WebSocket para precios reales (sin ejecutar trades)');
     }
 
     try {
@@ -297,6 +299,37 @@ class PolymarketWebSocketClient {
         }
       }
     }, 1000); // 1 segundo
+  }
+
+  /**
+   * HTTP Polling público (no requiere autenticación) - para DRY_RUN
+   */
+  _startHttpPolling(tokenId) {
+    logger.info('📡 Iniciando HTTP polling público (2s)');
+    
+    const fetchOrderbook = async () => {
+      try {
+        const response = await fetch(`${CLOB_API_BASE}/book?token_id=${tokenId}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const book = await response.json();
+        this._updateOrderbook(book);
+      } catch (err) {
+        logger.warn(`Error en HTTP polling: ${err.message}`);
+        this.currentPrices.staleCount = (this.currentPrices.staleCount || 0) + 1;
+        
+        // Invalidar después de 3 errores consecutivos
+        if (this.currentPrices.staleCount >= 3) {
+          this._invalidateMarket('HTTP_POLLING_FAILED');
+        }
+      }
+    };
+    
+    // Fetch inmediato + polling cada 2 segundos
+    fetchOrderbook();
+    this.pollingInterval = setInterval(fetchOrderbook, 2000);
   }
 
   _updateOrderbook(book) {
