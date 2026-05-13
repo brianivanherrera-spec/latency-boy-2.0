@@ -194,6 +194,10 @@ class PolymarketWebSocketClient {
       this.ws.on('message', (data) => {
         try {
           const message = JSON.parse(data.toString());
+          
+          // Debug: log todos los mensajes recibidos
+          logger.debug(`[WS-RAW] ${JSON.stringify(message).substring(0, 200)}`);
+          
           this._handleWebSocketMessage(message);
         } catch (err) {
           logger.warn(`Error parseando mensaje WS: ${err.message}`);
@@ -235,6 +239,13 @@ class PolymarketWebSocketClient {
    */
   _handleWebSocketMessage(message) {
     const eventType = message.event_type || message.type;
+    
+    // Log tipo de mensaje para debugging
+    if (eventType) {
+      logger.debug(`[WS-EVENT] Tipo: ${eventType}`);
+    } else {
+      logger.warn(`[WS-EVENT] Mensaje sin tipo reconocible: ${JSON.stringify(message).substring(0, 100)}`);
+    }
     
     switch (eventType) {
       case 'best_bid_ask':
