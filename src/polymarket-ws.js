@@ -303,19 +303,64 @@ class PolymarketWebSocketClient {
 
   /**
    * HTTP Polling público (no requiere autenticación) - para DRY_RUN
+   * Usa Gamma API que es pública y no requiere auth
    */
   _startHttpPolling(tokenId) {
-    logger.info('📡 Iniciando HTTP polling público (2s)');
+    logger.info('📡 Iniciando HTTP polling público via Gamma API (2s)');
     
     const fetchOrderbook = async () => {
       try {
-        const response = await fetch(`${CLOB_API_BASE}/book?token_id=${tokenId}`);
+        // Usar el conditionId del market completo, no el tokenId individual
+        const marketId = this.currentMarketConditionId || tokenId;
+        
+        // Usar Gamma API para obtener el market y sus precios
+        const response = await fetch(`${GAMMA_API_BASE}/markets/${marketId}`);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
         
-        const book = await response.json();
-        this._updateOrderbook(book);
+        const market = await response.json();
+        
+        // Extraer precios de los tokens YES/NO
+        const tokens = market.tokens || [];
+        const yesToken = tokens.find(t => t.outcome === 'Yes' || t.outcome === 'YES' || t.outcome === 'yes');
+        const noToken = tokens.find(t => t.outcome === 'No' || t.outcome === 'NO' || t.outcome === 'no');
+        
+        if (!yesToken || !noToken) {
+          throw new Error('Tokens YES/NO no encontrados en market');
+        }
+        
+        // Los precios vienen en el formato de last_price o price
+        const yesPrice = parseFloat(yesToken.price || yesToken.last_price || yesToken.lastPrice);
+        const noPrice = parseFloat(noToken.price || noToken.last_price || noToken.lastPrice);
+        
+        if (!yesPrice || !noPrice || isNaN(yesPrice) || isNaN(noPrice)) {
+          throw new Error('Precios inválidos');
+        }
+        
+        // Validar precios razonables
+        if (yesPrice < 0.05 || yesPrice > 0.95) {
+          logger.warn(`⚠️  Precio sospechoso: ${yesPrice.toFixed(3)}`);
+          this._invalidateMarket('INVALID_PRICE');
+          return;
+        }
+        
+        // Actualizar precios
+        this.currentPrices = {
+          yes: yesPrice,
+          no: noPrice,
+          timestamp: Date.now(),
+          staleCount: 0,
+          spread: Math.abs(yesPrice - noPrice),
+        };
+        
+        // Callback para notificar update
+        if (this.priceUpdateCallback) {
+          this.priceUpdateCallback(this.currentPrices);
+        }
+        
+        logger.debug(`📊 Gamma API: YES=${yesPrice.toFixed(3)} | NO=${noPrice.toFixed(3)}`);
+        
       } catch (err) {
         logger.warn(`Error en HTTP polling: ${err.message}`);
         this.currentPrices.staleCount = (this.currentPrices.staleCount || 0) + 1;
@@ -499,6 +544,10 @@ class PolymarketWebSocketClient {
         });
         
         // Suscribirse al orderbook de este mercado
+        // Guardamos el conditionId para HTTP polling
+        this.currentMarketConditionId = formatted.conditionId;
+        this.currentMarketGammaId = formatted.gammaId;
+        
         if (formatted.yesTokenId) {
           await this.subscribeToMarket(formatted.yesTokenId);
         }
