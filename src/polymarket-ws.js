@@ -246,13 +246,20 @@ class PolymarketWebSocketClient {
           this.wsDataTimeout = null;
         }
         
-        // Si ya estamos usando HTTP polling, no reconectar
+        // Si ya estamos usando HTTP polling, no hacer nada más
         if (this.pollingInterval) {
-          logger.info('Ya usando HTTP polling - no reconectar WebSocket');
+          logger.info('Ya usando HTTP polling - ignorando desconexión WS');
           return;
         }
         
-        // Intentar reconexión
+        // Si el WebSocket se cerró sin nunca enviar datos válidos, usar HTTP polling
+        if (this.wsExpectingData && !this.wsReceivedValidData) {
+          logger.warn('⚠️  WebSocket cerrado sin enviar datos - usando HTTP polling');
+          this._startHttpPolling(tokenId);
+          return;
+        }
+        
+        // Intentar reconexión solo si el WS había estado funcionando
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
           const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
