@@ -61,13 +61,6 @@ class PolymarketWebSocketClient {
   async init() {
     if (this._initialized) return;
 
-    // En DRY_RUN, usar API pública HTTP para precios (no requiere credenciales)
-    if (config.DRY_RUN) {
-      logger.info('✓ DRY RUN: Usando API pública para precios (solo lectura)');
-      this._initialized = true;
-      return;
-    }
-
     if (!HAS_CLOB_CLIENT) {
       logger.warn('⚠️  Sin CLOB client - usando modo HTTP fallback');
       this._initialized = true;
@@ -80,16 +73,22 @@ class PolymarketWebSocketClient {
     const apiSecret = config.POLY_API_SECRET;
     const passphrase = config.POLY_PASSPHRASE;
 
-    if (!privateKey) {
-      throw new Error('POLY_PRIVATE_KEY no configurada');
-    }
-
-    if (!apiKey) {
-      throw new Error('POLY_API_KEY o RELAYER_API_KEY no configurada');
+    // Si no hay credenciales, usar HTTP polling público
+    if (!privateKey || !apiKey) {
+      logger.warn('⚠️  Sin credenciales Polymarket - usando HTTP polling público');
+      this._initialized = true;
+      return;
     }
 
     try {
       this.wallet = new ethers.Wallet(privateKey);
+      
+      // Mensaje según modo de operación
+      if (config.DRY_RUN) {
+        logger.info('✓ DRY RUN: WebSocket real para precios (sin ejecutar trades)');
+      } else {
+        logger.info('✓ LIVE: WebSocket real + ejecución de trades');
+      }
       
       // Si solo tenemos API Key (Relayer API nuevo), usamos ese formato
       if (apiKey && !apiSecret && !passphrase) {
@@ -134,11 +133,16 @@ class PolymarketWebSocketClient {
     try {
       await this.init();
       
-      // En DRY_RUN, usar polling HTTP público (no requiere autenticación)
-      if (config.DRY_RUN) {
-        logger.info(`[DRY RUN] Usando HTTP polling público para token ${tokenId}`);
+      // Si no tenemos credenciales (clobClient no inicializado), usar HTTP polling público
+      if (!this.clobClient) {
+        logger.info(`Sin credenciales - usando HTTP polling público para token ${tokenId}`);
         this._startHttpPolling(tokenId);
         return;
+      }
+      
+      // Tenemos credenciales: usar WebSocket real (funciona en DRY_RUN y LIVE)
+      if (config.DRY_RUN) {
+        logger.info(`[DRY RUN] Usando WebSocket real para precios (sin ejecutar trades)`);
       }
       
       // Obtener orderbook inicial vía REST
