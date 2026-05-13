@@ -194,8 +194,11 @@ class PolymarketWebSocketClient {
         this.wsExpectingData = true;
         this.wsReceivedValidData = false;
         
+        logger.info('[DEBUG] Configurando timeout de 10s para detectar WebSocket sin datos');
+        
         // Timeout: si no recibimos datos válidos en 10 segundos, usar HTTP polling
         this.wsDataTimeout = setTimeout(() => {
+          logger.warn(`[DEBUG] Timeout disparado - wsReceivedValidData: ${this.wsReceivedValidData}`);
           if (!this.wsReceivedValidData) {
             logger.warn('⚠️  WebSocket no envía datos válidos - fallback a HTTP polling');
             this.wsExpectingData = false;
@@ -203,6 +206,8 @@ class PolymarketWebSocketClient {
               this.ws.close();
             }
             this._startHttpPolling(tokenId);
+          } else {
+            logger.info('[DEBUG] WebSocket funcionando correctamente');
           }
         }, 10000);
       });
