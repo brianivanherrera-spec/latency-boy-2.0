@@ -402,8 +402,10 @@ class PolymarketWebSocketClient {
     
     const fetchOrderbook = async () => {
       try {
-        // Usar el conditionId del market completo, no el tokenId individual
-        const marketId = this.currentMarketConditionId || tokenId;
+        // Usar el gammaId (numérico) del market, NO el conditionId (hex)
+        const marketId = this.currentMarketGammaId || this.currentMarketConditionId || tokenId;
+        
+        logger.debug(`[HTTP-POLL] Consultando Gamma API con marketId: ${marketId}`);
         
         // Usar Gamma API para obtener el market y sus precios
         const response = await fetch(`${GAMMA_API_BASE}/markets/${marketId}`);
@@ -451,7 +453,7 @@ class PolymarketWebSocketClient {
           this.priceUpdateCallback(this.currentPrices);
         }
         
-        logger.debug(`📊 Gamma API: YES=${yesPrice.toFixed(3)} | NO=${noPrice.toFixed(3)}`);
+        logger.info(`📊 Gamma API: YES=${yesPrice.toFixed(3)} | NO=${noPrice.toFixed(3)}`);
         
       } catch (err) {
         logger.warn(`Error en HTTP polling: ${err.message}`);
