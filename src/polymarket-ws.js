@@ -415,12 +415,19 @@ class PolymarketWebSocketClient {
         
         const market = await response.json();
         
+        // Debug: log de la estructura de la respuesta
+        logger.debug(`[HTTP-POLL] Market response keys: ${Object.keys(market).join(', ')}`);
+        logger.debug(`[HTTP-POLL] Market data: ${JSON.stringify(market).substring(0, 500)}`);
+        
         // Extraer precios de los tokens YES/NO
         const tokens = market.tokens || [];
+        logger.debug(`[HTTP-POLL] Tokens encontrados: ${tokens.length}`);
+        
         const yesToken = tokens.find(t => t.outcome === 'Yes' || t.outcome === 'YES' || t.outcome === 'yes');
         const noToken = tokens.find(t => t.outcome === 'No' || t.outcome === 'NO' || t.outcome === 'no');
         
         if (!yesToken || !noToken) {
+          logger.warn(`[HTTP-POLL] No se encontraron tokens YES/NO. Tokens disponibles: ${JSON.stringify(tokens.map(t => t.outcome))}`);
           throw new Error('Tokens YES/NO no encontrados en market');
         }
         
