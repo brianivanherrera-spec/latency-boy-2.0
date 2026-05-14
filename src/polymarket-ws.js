@@ -415,25 +415,17 @@ class PolymarketWebSocketClient {
         
         const market = await response.json();
         
-        // Debug: log de la estructura de la respuesta
-        logger.debug(`[HTTP-POLL] Market response keys: ${Object.keys(market).join(', ')}`);
-        logger.debug(`[HTTP-POLL] Market data: ${JSON.stringify(market).substring(0, 500)}`);
-        
-        // Extraer precios de los tokens YES/NO
-        const tokens = market.tokens || [];
-        logger.debug(`[HTTP-POLL] Tokens encontrados: ${tokens.length}`);
-        
-        const yesToken = tokens.find(t => t.outcome === 'Yes' || t.outcome === 'YES' || t.outcome === 'yes');
-        const noToken = tokens.find(t => t.outcome === 'No' || t.outcome === 'NO' || t.outcome === 'no');
-        
-        if (!yesToken || !noToken) {
-          logger.warn(`[HTTP-POLL] No se encontraron tokens YES/NO. Tokens disponibles: ${JSON.stringify(tokens.map(t => t.outcome))}`);
-          throw new Error('Tokens YES/NO no encontrados en market');
+        // Gamma API devuelve precios en outcomePrices, no en tokens
+        if (!market.outcomePrices) {
+          throw new Error('outcomePrices no encontrado en respuesta');
         }
         
-        // Los precios vienen en el formato de last_price o price
-        const yesPrice = parseFloat(yesToken.price || yesToken.last_price || yesToken.lastPrice);
-        const noPrice = parseFloat(noToken.price || noToken.last_price || noToken.lastPrice);
+        const prices = typeof market.outcomePrices === 'string'
+          ? JSON.parse(market.outcomePrices)
+          : market.outcomePrices;
+        
+        const yesPrice = parseFloat(prices[0]);
+        const noPrice = parseFloat(prices[1]);
         
         if (!yesPrice || !noPrice || isNaN(yesPrice) || isNaN(noPrice)) {
           throw new Error('Precios inválidos');
@@ -441,8 +433,8 @@ class PolymarketWebSocketClient {
         
         // Validar precios razonables
         if (yesPrice < 0.05 || yesPrice > 0.95) {
-          logger.warn(`⚠️  Precio sospechoso: ${yesPrice.toFixed(3)}`);
-          this._invalidateMarket('INVALID_PRICE');
+          logger.warn(`⚠️  Precio sospechoso: ${yesPrice.toFixed(3)} - mercado probablemente cerrado`);
+          this._invalidateMarket('MARKET_CLOSED');
           return;
         }
         
